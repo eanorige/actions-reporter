@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { ActionData } from '@/lib/logParser'
 import { BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { Payload } from 'recharts/types/component/DefaultTooltipContent'
+import { BarRectangleItem } from 'recharts/types/cartesian/Bar'
 
 interface TableProps {
   data: ActionData[]
@@ -35,6 +36,7 @@ function calculateRuntimeData(runs: ActionData[]) {
     timestamp: new Date(run.timestamp).getTime(),
     duration: run.duration || 0,
     status: run.status,
+    url: run.url,
   }))
 }
 
@@ -67,6 +69,7 @@ function ActionRow({
   isFirst,
   isLast,
   timeRangeWeeks,
+  disableSorting,
 }: {
   group: ActionGroup
   onMoveUp: () => void
@@ -74,6 +77,7 @@ function ActionRow({
   isFirst: boolean
   isLast: boolean
   timeRangeWeeks: number
+  disableSorting?: boolean
 }) {
   const [isExpanded, setIsExpanded] = useState(false)
   const runtimeData = calculateRuntimeData(group.runs)
@@ -112,22 +116,24 @@ function ActionRow({
       </button>
       <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
         <div className="flex items-center sm:w-1/3 min-w-0 gap-2 ml-2">
-          <div className="flex flex-col gap-1">
-            <button
-              onClick={onMoveUp}
-              disabled={isFirst}
-              className="p-0.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded disabled:opacity-30"
-            >
-              <ArrowUp />
-            </button>
-            <button
-              onClick={onMoveDown}
-              disabled={isLast}
-              className="p-0.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded disabled:opacity-30"
-            >
-              <ArrowDown />
-            </button>
-          </div>
+          {!disableSorting && (
+            <div className="flex flex-col gap-1">
+              <button
+                onClick={onMoveUp}
+                disabled={isFirst}
+                className="p-0.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded disabled:opacity-30"
+              >
+                <ArrowUp />
+              </button>
+              <button
+                onClick={onMoveDown}
+                disabled={isLast}
+                className="p-0.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded disabled:opacity-30"
+              >
+                <ArrowDown />
+              </button>
+            </div>
+          )}
           <div className="flex justify-between items-center flex-1 min-w-0">
             <h4 className="text-sm font-semibold truncate mr-2 cursor-help" title={tooltipTitle}>
               {group.name}
@@ -159,11 +165,21 @@ function ActionRow({
                   return [`${value.toFixed(1)}s (${status})`, 'Duration']
                 }}
               />
-              <Bar dataKey="duration" isAnimationActive={false} barSize={4}>
+              <Bar
+                dataKey="duration"
+                isAnimationActive={false}
+                barSize={4}
+                onClick={(data: BarRectangleItem | { url?: string }) => {
+                  if ('url' in data && data.url) {
+                    window.open(data.url, '_blank')
+                  }
+                }}
+              >
                 {runtimeData.map((entry, index) => (
                   <Cell
                     key={`cell-${index}`}
                     fill={entry.status === 'success' ? '#82ca9d' : '#ff8042'}
+                    style={{ cursor: entry.url ? 'pointer' : 'default' }}
                   />
                 ))}
               </Bar>
@@ -223,11 +239,21 @@ function ActionRow({
                     return [`${value.toFixed(1)}s (${status})`, 'Duration']
                   }}
                 />
-                <Bar dataKey="duration" isAnimationActive={false} barSize={8}>
+                <Bar
+                  dataKey="duration"
+                  isAnimationActive={false}
+                  barSize={8}
+                  onClick={(data: BarRectangleItem | { url?: string }) => {
+                    if ('url' in data && data.url) {
+                      window.open(data.url, '_blank')
+                    }
+                  }}
+                >
                   {runtimeData.map((entry, index) => (
                     <Cell
                       key={`cell-${index}`}
                       fill={entry.status === 'success' ? '#82ca9d' : '#ff8042'}
+                      style={{ cursor: entry.url ? 'pointer' : 'default' }}
                     />
                   ))}
                 </Bar>
@@ -250,6 +276,7 @@ function get90thPercentile(values: number[]) {
 export default function ActionsTable({ data }: TableProps) {
   const [orderedNames, setOrderedNames] = useState<string[]>([])
   const [excludeShortRuns, setExcludeShortRuns] = useState(false)
+  const [groupByFrequency, setGroupByFrequency] = useState(false)
 
   useEffect(() => {
     const stored = localStorage.getItem('actions_order')
@@ -387,58 +414,114 @@ export default function ActionsTable({ data }: TableProps) {
     }
   }
 
+  const renderGroups = (groups: ActionGroup[], listType: 'main' | 'other') => {
+    if (groups.length === 0) {
+      return (
+        <p className="text-gray-500">
+          No actions found on {listType === 'main' ? 'main' : 'other'} branches.
+        </p>
+      )
+    }
+
+    if (!groupByFrequency) {
+      return groups.map((group, index) => (
+        <ActionRow
+          key={group.name}
+          group={group}
+          onMoveUp={() => handleMove(group.name, 'up', groups)}
+          onMoveDown={() => handleMove(group.name, 'down', groups)}
+          isFirst={index === 0}
+          isLast={index === groups.length - 1}
+          timeRangeWeeks={timeRangeWeeks}
+        />
+      ))
+    }
+
+    // Group by frequency
+    const frequent: ActionGroup[] = []
+    const daily: ActionGroup[] = []
+    const weekly: ActionGroup[] = []
+
+    groups.forEach((group) => {
+      const runsPerWeek =
+        timeRangeWeeks > 0 ? group.runs.length / timeRangeWeeks : group.runs.length
+      // Allow for some extra runs (e.g. retries) in daily jobs.
+      // n+1 runs in n days -> (n+1)/n runs/day. Max is 2 runs/day for n=1.
+      // So we use 14 runs/week as the threshold.
+      if (runsPerWeek > 14) {
+        frequent.push(group)
+      } else if (runsPerWeek > 1) {
+        daily.push(group)
+      } else {
+        weekly.push(group)
+      }
+    })
+
+    const renderCategory = (title: string, items: ActionGroup[]) => {
+      if (items.length === 0) return null
+      return (
+        <div className="mb-4">
+          <h4 className="text-md font-medium text-gray-600 dark:text-gray-400 mb-2">{title}</h4>
+          {items.map((group) => (
+            <ActionRow
+              key={group.name}
+              group={group}
+              onMoveUp={() => {}}
+              onMoveDown={() => {}}
+              isFirst={false}
+              isLast={false}
+              timeRangeWeeks={timeRangeWeeks}
+              disableSorting={true}
+            />
+          ))}
+        </div>
+      )
+    }
+
+    return (
+      <div className="flex flex-col gap-2">
+        {renderCategory('Frequent (> 2/day)', frequent)}
+        {renderCategory('Daily (~1-2/day)', daily)}
+        {renderCategory('Weekly (~1/week)', weekly)}
+      </div>
+    )
+  }
+
   return (
     <div className="p-4">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-xl font-bold">Actions Summary</h2>
-        <label className="flex items-center space-x-2 text-sm cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={excludeShortRuns}
-            onChange={(e) => setExcludeShortRuns(e.target.checked)}
-            className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
-          />
-          <span className="text-gray-700 dark:text-gray-300">
-            Exclude short runs (&lt; 5% of p90)
-          </span>
-        </label>
+        <div className="flex gap-4">
+          <label className="flex items-center space-x-2 text-sm cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={groupByFrequency}
+              onChange={(e) => setGroupByFrequency(e.target.checked)}
+              className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+            />
+            <span className="text-gray-700 dark:text-gray-300">Group by Frequency</span>
+          </label>
+          <label className="flex items-center space-x-2 text-sm cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={excludeShortRuns}
+              onChange={(e) => setExcludeShortRuns(e.target.checked)}
+              className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+            />
+            <span className="text-gray-700 dark:text-gray-300">
+              Exclude short runs (&lt; 5% of p90)
+            </span>
+          </label>
+        </div>
       </div>
       <div className="flex flex-col gap-8">
         <div>
           <h3 className="text-lg font-semibold mb-4 border-b pb-2">Main Branch</h3>
-          {sortedMainGroups.length === 0 ? (
-            <p className="text-gray-500">No actions found on main branch.</p>
-          ) : (
-            sortedMainGroups.map((group, index) => (
-              <ActionRow
-                key={group.name}
-                group={group}
-                onMoveUp={() => handleMove(group.name, 'up', sortedMainGroups)}
-                onMoveDown={() => handleMove(group.name, 'down', sortedMainGroups)}
-                isFirst={index === 0}
-                isLast={index === sortedMainGroups.length - 1}
-                timeRangeWeeks={timeRangeWeeks}
-              />
-            ))
-          )}
+          {renderGroups(sortedMainGroups, 'main')}
         </div>
         <div>
           <h3 className="text-lg font-semibold mb-4 border-b pb-2">Other Branches</h3>
-          {sortedOtherGroups.length === 0 ? (
-            <p className="text-gray-500">No actions found on other branches.</p>
-          ) : (
-            sortedOtherGroups.map((group, index) => (
-              <ActionRow
-                key={group.name}
-                group={group}
-                onMoveUp={() => handleMove(group.name, 'up', sortedOtherGroups)}
-                onMoveDown={() => handleMove(group.name, 'down', sortedOtherGroups)}
-                isFirst={index === 0}
-                isLast={index === sortedOtherGroups.length - 1}
-                timeRangeWeeks={timeRangeWeeks}
-              />
-            ))
-          )}
+          {renderGroups(sortedOtherGroups, 'other')}
         </div>
       </div>
     </div>

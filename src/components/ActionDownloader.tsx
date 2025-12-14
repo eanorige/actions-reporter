@@ -5,6 +5,18 @@ import Papa from 'papaparse'
 import { ActionData } from '@/lib/logParser'
 import { storeActions, getStoredActions, clearStoredActions } from '@/lib/storage'
 
+interface GitHubRun {
+  id: number
+  name: string
+  run_started_at: string | null
+  created_at: string
+  updated_at: string
+  conclusion: string | null
+  jobs_url: string
+  head_branch: string
+  html_url: string
+}
+
 export default function ActionDownloader({
   onDataLoaded,
 }: {
@@ -14,6 +26,8 @@ export default function ActionDownloader({
   const [repo, setRepo] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [totalRuns, setTotalRuns] = useState(0)
   const [cachedCount, setCachedCount] = useState(0)
   const [timeWindow, setTimeWindow] = useState('24h')
 
@@ -56,6 +70,8 @@ export default function ActionDownloader({
 
     setError(null)
     setIsLoading(true)
+    setProgress(0)
+    setTotalRuns(0)
 
     const [owner, repoName] = repo.split('/')
     if (!owner || !repoName) {
@@ -105,6 +121,7 @@ export default function ActionDownloader({
         const data = await response.json()
         const runs = data.workflow_runs || []
         allRuns = [...allRuns, ...runs]
+        setTotalRuns(allRuns.length)
 
         if (runs.length < perPage) {
           hasMore = false
@@ -113,21 +130,63 @@ export default function ActionDownloader({
         }
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const formattedData: ActionData[] = allRuns.map((run: any) => {
-        const startTime = new Date(run.run_started_at || run.created_at).getTime()
-        const endTime = new Date(run.updated_at).getTime()
-        const duration = (endTime - startTime) / 1000 // seconds
+      const formattedData: ActionData[] = []
+      const batchSize = 5
 
-        return {
-          id: run.id,
-          name: run.name,
-          status: run.conclusion,
-          branch: run.head_branch,
-          timestamp: run.created_at,
-          duration: duration > 0 ? duration : 0,
-        }
-      })
+      for (let i = 0; i < allRuns.length; i += batchSize) {
+        const batch = allRuns.slice(i, i + batchSize)
+        const batchResults = await Promise.all(
+          batch.map(async (run: GitHubRun) => {
+            const startTime = new Date(run.run_started_at || run.created_at).getTime()
+            const endTime = new Date(run.updated_at).getTime()
+            const duration = (endTime - startTime) / 1000 // seconds
+
+            let status = run.conclusion || 'in_progress'
+            try {
+              const jobsResponse = await fetch(run.jobs_url, {
+                headers: {
+                  Authorization: `token ${pat}`,
+                  Accept: 'application/vnd.github.v3+json',
+                },
+              })
+
+              if (jobsResponse.ok) {
+                const jobsData = await jobsResponse.json()
+                const jobs = jobsData.jobs || []
+                let skippedStepsCount = 0
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                jobs.forEach((job: any) => {
+                  const steps = job.steps || []
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  steps.forEach((step: any) => {
+                    if (step.conclusion === 'skipped') {
+                      skippedStepsCount++
+                    }
+                  })
+                })
+
+                if (skippedStepsCount > 1) {
+                  status = 'skipped'
+                }
+              }
+            } catch (error) {
+              console.error('Error fetching jobs for run', run.id, error)
+            }
+
+            return {
+              id: run.id,
+              name: run.name,
+              status: status,
+              branch: run.head_branch,
+              timestamp: run.created_at,
+              duration: duration > 0 ? duration : 0,
+              url: run.html_url,
+            }
+          })
+        )
+        formattedData.push(...batchResults)
+        setProgress(formattedData.length)
+      }
 
       const mergedData = storeActions(formattedData)
       setCachedCount(mergedData.length)
@@ -175,7 +234,7 @@ export default function ActionDownloader({
           disabled={isLoading}
           className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-400"
         >
-          {isLoading ? 'Loading...' : 'Fetch Action Runs'}
+          {isLoading ? `Processing ${progress}/${totalRuns} runs...` : 'Fetch Action Runs'}
         </button>
 
         <div className="flex items-center justify-between mt-2 p-2 bg-gray-50 dark:bg-gray-800 rounded">

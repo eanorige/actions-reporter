@@ -8,6 +8,7 @@ export interface ActionData {
   branch: string
   timestamp: string
   duration?: number // in seconds
+  url?: string
 }
 
 export const parseLog = (file: File): Promise<ActionData[]> => {
