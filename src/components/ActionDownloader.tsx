@@ -146,19 +146,19 @@ export default function ActionDownloader({
           value={pat}
           onChange={(e) => setPat(e.target.value)}
           placeholder="Personal Access Token"
-          className="p-2 border rounded"
+          className="p-2 border rounded bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600"
         />
         <input
           type="text"
           value={repo}
           onChange={(e) => setRepo(e.target.value)}
           placeholder="owner/repository"
-          className="p-2 border rounded"
+          className="p-2 border rounded bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600"
         />
         <select
           value={timeWindow}
           onChange={(e) => setTimeWindow(e.target.value)}
-          className="p-2 border rounded"
+          className="p-2 border rounded bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600"
         >
           <option value="24h">Last 24 Hours</option>
           <option value="7d">Last 7 Days</option>
