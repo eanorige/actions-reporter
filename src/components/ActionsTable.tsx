@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { ActionData } from '@/lib/logParser'
 import { BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import { Payload } from 'recharts/types/component/DefaultTooltipContent'
 
 interface TableProps {
   data: ActionData[]
@@ -153,8 +154,7 @@ function ActionRow({
                   color: '#000',
                 }}
                 labelFormatter={(label) => new Date(label).toLocaleString()}
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                formatter={(value: number, name: string, props: any) => {
+                formatter={(value: number, name: string, props: Payload<number, string>) => {
                   const status = props.payload.status
                   return [`${value.toFixed(1)}s (${status})`, 'Duration']
                 }}
@@ -218,8 +218,7 @@ function ActionRow({
                     border: '1px solid #ccc',
                   }}
                   labelFormatter={(label) => new Date(label).toLocaleString()}
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  formatter={(value: number, name: string, props: any) => {
+                  formatter={(value: number, name: string, props: Payload<number, string>) => {
                     const status = props.payload.status
                     return [`${value.toFixed(1)}s (${status})`, 'Duration']
                   }}
@@ -255,8 +254,7 @@ export default function ActionsTable({ data }: TableProps) {
   useEffect(() => {
     const stored = localStorage.getItem('actions_order')
     if (stored) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setOrderedNames(JSON.parse(stored))
+      setTimeout(() => setOrderedNames(JSON.parse(stored)), 0)
     }
   }, [])
 
@@ -329,8 +327,6 @@ export default function ActionsTable({ data }: TableProps) {
     const currentIndex = currentOrder.indexOf(groupName)
     if (currentIndex === -1) return // Should not happen if we just added them
 
-    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
-
     // Check bounds
     // Note: We are moving within the global list, but visually we are moving within the filtered list (Main or Other).
     // This is tricky. If "Main" has [A, B] and "Other" has [C, D].
@@ -347,10 +343,7 @@ export default function ActionsTable({ data }: TableProps) {
     const visualIndex = listNames.indexOf(groupName)
 
     if (direction === 'up' && visualIndex > 0) {
-      const swapWith = listNames[visualIndex - 1]
       // Swap positions in the global order list
-      const index1 = currentOrder.indexOf(groupName)
-      const index2 = currentOrder.indexOf(swapWith)
 
       // Remove both
       // This is getting complicated because they might be far apart in the global list if interleaved with other branches.
