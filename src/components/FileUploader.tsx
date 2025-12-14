@@ -1,28 +1,28 @@
-'use client';
+'use client'
 
-import { useState } from 'react';
-import { parseLog, ActionData } from '@/lib/logParser';
+import { useState } from 'react'
+import { parseLog, ActionData } from '@/lib/logParser'
 
 export default function FileUploader({
   onDataLoaded,
 }: {
-  onDataLoaded: (data: ActionData[]) => void;
+  onDataLoaded: (data: ActionData[]) => void
 }) {
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null)
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+    const file = event.target.files?.[0]
     if (file) {
       try {
-        const data = await parseLog(file);
-        onDataLoaded(data);
-        setError(null);
+        const data = await parseLog(file)
+        onDataLoaded(data)
+        setError(null)
       } catch (err) {
-        setError('Error parsing file');
-        console.error(err);
+        setError('Error parsing file')
+        console.error(err)
       }
     }
-  };
+  }
 
   return (
     <div className="p-4">
@@ -34,5 +34,5 @@ export default function FileUploader({
       />
       {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
     </div>
-  );
+  )
 }

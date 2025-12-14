@@ -1,13 +1,13 @@
-import Papa from 'papaparse';
+import Papa from 'papaparse'
 
 export interface ActionData {
-  [key: string]: string | number | undefined;
-  id?: number;
-  name: string;
-  status: string;
-  branch: string;
-  timestamp: string;
-  duration?: number; // in seconds
+  [key: string]: string | number | undefined
+  id?: number
+  name: string
+  status: string
+  branch: string
+  timestamp: string
+  duration?: number // in seconds
 }
 
 export const parseLog = (file: File): Promise<ActionData[]> => {
@@ -16,11 +16,11 @@ export const parseLog = (file: File): Promise<ActionData[]> => {
       header: true,
       dynamicTyping: true,
       complete: (results) => {
-        resolve(results.data as ActionData[]);
+        resolve(results.data as ActionData[])
       },
       error: (error) => {
-        reject(error);
+        reject(error)
       },
-    });
-  });
-};
+    })
+  })
+}

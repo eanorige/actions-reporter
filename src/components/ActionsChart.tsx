@@ -1,4 +1,4 @@
-'use client';
+'use client'
 
 import {
   LineChart,
@@ -9,18 +9,18 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-} from 'recharts';
-import { ActionData } from '@/lib/logParser';
+} from 'recharts'
+import { ActionData } from '@/lib/logParser'
 
 interface ChartProps {
-  data: ActionData[];
+  data: ActionData[]
 }
 
 export default function ActionsChart({ data }: ChartProps) {
   const chartData = data.map((item) => ({
     ...item,
     date: new Date(item.timestamp).toLocaleDateString(),
-  }));
+  }))
 
   return (
     <div className="p-4">
@@ -45,14 +45,9 @@ export default function ActionsChart({ data }: ChartProps) {
             name="Success"
             activeDot={{ r: 8 }}
           />
-          <Line
-            type="monotone"
-            dataKey="failure"
-            stroke="#82ca9d"
-            name="Failure"
-          />
+          <Line type="monotone" dataKey="failure" stroke="#82ca9d" name="Failure" />
         </LineChart>
       </ResponsiveContainer>
     </div>
-  );
+  )
 }
